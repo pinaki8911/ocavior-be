@@ -6,6 +6,7 @@ const employeeRoutes = require("./routes/employeeRoutes");
 
 const app = express();
 app.use(express.json());
+console.log(process.env.FRONTEND_ORIGIN);
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN }));
 app.use("/api/employees", employeeRoutes);
 

@@ -26,28 +26,40 @@ const submitEmployeeForm = async (req, res) => {
     // Upload the resume to Azure Blob
     const blobName = `${email}_${Date.now()}${path.extname(file.originalname)}`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    let resumeUrl;
 
-    await blockBlobClient.uploadData(file.buffer);
-    const resumeUrl = blockBlobClient.url;
+    try {
+      await blockBlobClient.uploadData(file.buffer);
+      resumeUrl = blockBlobClient.url;
+    } catch (uploadError) {
+      console.error("Error uploading file to Azure Blob:", uploadError);
+      return res.status(500).json({ error: "Failed to upload resume file" });
+    }
 
     // Save employee details to the database
-    const newEmployee = new Employee({
-      firstName,
-      lastName,
-      email,
-      position,
-      ExpSkill,
-      resumeUrl,
-    });
+    try {
+      const newEmployee = new Employee({
+        firstName,
+        lastName,
+        email,
+        position,
+        ExpSkill,
+        resumeUrl,
+      });
 
-    await newEmployee.save();
+      await newEmployee.save();
 
-    res.status(201).json({
-      message: "Employee form submitted successfully",
-      data: newEmployee,
-    });
+      res.status(200).json({
+        message: "Employee form submitted successfully",
+        data: newEmployee,
+      });
+    } catch (dbError) {
+      console.error("Error saving employee details to database:", dbError);
+      res.status(500).json({ error: "Failed to save employee data" });
+    }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Unexpected error:", error);
+    res.status(500).json({ error: "An unexpected error occurred" });
   }
 };
 

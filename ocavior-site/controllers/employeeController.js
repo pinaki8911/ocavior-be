@@ -1,4 +1,4 @@
-const { BlobServiceClient } = require("@azure/storage-blob");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const Employee = require("../models/Employee");
 const multer = require("multer");
 const path = require("path");
@@ -7,13 +7,14 @@ const path = require("path");
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Azure Blob Storage client setup
-const blobServiceClient = BlobServiceClient.fromConnectionString(
-  process.env.AZURE_STORAGE_ACCOUNT_CONNECTION_STRING
-);
-const containerClient = blobServiceClient.getContainerClient(
-  process.env.AZURE_STORAGE_CONTAINER_NAME
-);
+// AWS S3 client setup
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 // Employee submission handler
 const submitEmployeeForm = async (req, res) => {
@@ -23,16 +24,24 @@ const submitEmployeeForm = async (req, res) => {
 
     if (!file) return res.status(400).send("Resume file is required.");
 
-    // Upload the resume to Azure Blob
-    const blobName = `${email}_${Date.now()}${path.extname(file.originalname)}`;
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    // Upload the resume to S3
+    const fileName = `${email}_${Date.now()}${path.extname(file.originalname)}`;
     let resumeUrl;
 
     try {
-      await blockBlobClient.uploadData(file.buffer);
-      resumeUrl = blockBlobClient.url;
+      const uploadParams = {
+        Bucket: process.env.AWS_S3_BUCKET_NAME,
+        Key: fileName,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      };
+
+      await s3Client.send(new PutObjectCommand(uploadParams));
+
+      // Generate the S3 URL
+      resumeUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
     } catch (uploadError) {
-      console.error("Error uploading file to Azure Blob:", uploadError);
+      console.error("Error uploading file to S3:", uploadError);
       return res.status(500).json({ error: "Failed to upload resume file" });
     }
 
@@ -46,7 +55,6 @@ const submitEmployeeForm = async (req, res) => {
         ExpSkill,
         resumeUrl,
       });
-
       await newEmployee.save();
 
       res.status(200).json({
